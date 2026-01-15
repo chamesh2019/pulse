@@ -1,0 +1,19 @@
+name = "shard-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Enable the SQLite storage backend (Standard for new DOs)
+# This ensures you stay within the new architecture.
+[[durable_objects.bindings]]
+name = "MEETING_ROOM"
+class_name = "MeetingRoom"
+
+# MIGRATIONS ARE REQUIRED for Durable Objects
+# This block registers your class with the Cloudflare system.
+[[migrations]]
+tag = "v1" # Version 1 of your database/object structure
+new_classes = ["MeetingRoom"]
+
+# Optional: Observability for better debugging logs
+[observability]
+enabled = true

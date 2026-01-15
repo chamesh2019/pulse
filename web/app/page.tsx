@@ -1,0 +1,86 @@
+"use client";
+
+import { useState } from "react";
+
+export default function Home() {
+  const [meetingId, setMeetingId] = useState("");
+  const [name, setName] = useState("");
+
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (meetingId.trim() && name.trim()) {
+      // Logic to join would go here, for now we just log
+      console.log("Joining meeting:", meetingId, "as", name);
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 p-4 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-4xl opacity-20 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[128px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500 rounded-full blur-[128px]" />
+      </div>
+
+      <div className="w-full max-w-md space-y-8 relative z-10">
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+            Pulse
+          </h1>
+          <p className="text-neutral-400">
+            Enter your details to join the meeting.
+          </p>
+        </div>
+
+        <form onSubmit={handleJoin} className="mt-8 space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="name" className="sr-only">
+                Your Name
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
+                placeholder="Enter your name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="meeting-id" className="sr-only">
+                Meeting ID
+              </label>
+              <input
+                id="meeting-id"
+                name="meetingId"
+                type="text"
+                required
+                value={meetingId}
+                onChange={(e) => setMeetingId(e.target.value)}
+                className="block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
+                placeholder="Enter meeting code"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="flex w-full justify-center rounded-xl bg-blue-600 px-3 py-4 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            Join Meeting
+          </button>
+        </form>
+
+        <div className="text-center">
+          <p className="text-xs text-neutral-500">
+            Secure & Encrypted Connection
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}
