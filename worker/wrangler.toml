@@ -1,4 +1,4 @@
-name = "shard-worker"
+name = "pulse"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
@@ -12,7 +12,7 @@ class_name = "MeetingRoom"
 # This block registers your class with the Cloudflare system.
 [[migrations]]
 tag = "v1" # Version 1 of your database/object structure
-new_classes = ["MeetingRoom"]
+new_sqlite_classes = ["MeetingRoom"]
 
 # Optional: Observability for better debugging logs
 [observability]

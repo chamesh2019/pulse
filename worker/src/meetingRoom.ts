@@ -15,8 +15,45 @@ export class MeetingRoom extends DurableObject {
         this.lastActivity = Date.now();
     }
 
-    fetch(request: Request): Response | Promise<Response> {
-        return new Response("Hello, world!");
+    async fetch(request: Request): Promise<Response> {
+        if (request.method === "GET") {
+            const url = new URL(request.url);
+            const timestamp = url.searchParams.get("ts");
+
+            if (!timestamp) {
+                return new Response("Missing timestamp", { status: 400 });
+            }
+
+            const chunk = this.fragments.get(timestamp);
+
+            if (!chunk) {
+                return new Response("Not found yet", { status: 404 });
+            }
+
+            return new Response(chunk, {
+                headers: {
+                    "Content-Type": "audio/webm",
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                }
+            });
+        }
+
+        if (request.method === "POST") {
+            const url = new URL(request.url);
+            const timestamp = url.searchParams.get("ts");
+
+            if (!timestamp) {
+                return new Response("Missing timestamp", { status: 400 });
+            }
+
+            const chunk = await request.arrayBuffer();
+            this.fragments.set(timestamp, new Uint8Array(chunk));
+            this.lastActivity = Date.now();
+
+            return new Response("OK", { status: 200 });
+        }
+
+        return new Response("Method not allowed", { status: 405 });
     }
 }
 
