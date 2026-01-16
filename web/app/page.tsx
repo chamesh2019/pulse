@@ -12,7 +12,7 @@ export default function Home() {
     e.preventDefault();
     if (meetingId.trim() && name.trim()) {
       console.log("Joining meeting:", meetingId, "as", name);
-      router.push(`/${meetingId}`);
+      router.push(`/meeting/${meetingId}`);
     }
   };
 
