@@ -1,22 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const [meetingId, setMeetingId] = useState("");
   const [name, setName] = useState("");
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     if (meetingId.trim() && name.trim()) {
-      // Logic to join would go here, for now we just log
       console.log("Joining meeting:", meetingId, "as", name);
+      router.push(`/${meetingId}`);
     }
   };
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 p-4 relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-4xl opacity-20 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[128px]" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500 rounded-full blur-[128px]" />
@@ -45,7 +46,7 @@ export default function Home() {
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
+                className="outline-none block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
                 placeholder="Enter your name"
               />
             </div>
@@ -57,11 +58,11 @@ export default function Home() {
               <input
                 id="meeting-id"
                 name="meetingId"
-                type="text"
+                type="number"
                 required
                 value={meetingId}
                 onChange={(e) => setMeetingId(e.target.value)}
-                className="block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all outline-none"
                 placeholder="Enter meeting code"
               />
             </div>
