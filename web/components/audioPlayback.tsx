@@ -39,7 +39,7 @@ export default function AudioPlayer({ roomId, username }: { roomId: string, user
 
                 // 1. Fetch the Initialization Segment (Header)
                 try {
-                    const headerResponse = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/room/${roomId}?type=header`);
+                    const headerResponse = await fetch(`/worker/room/${roomId}?type=header`);
                     if (headerResponse.ok) {
                         const headerChunk = await headerResponse.arrayBuffer();
                         sourceBuffer.appendBuffer(headerChunk);
@@ -61,7 +61,7 @@ export default function AudioPlayer({ roomId, username }: { roomId: string, user
                 let nextTimestamp = Date.now() - BUFFER_DELAY;
 
                 try {
-                    const syncResponse = await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/room/${roomId}?type=sync`);
+                    const syncResponse = await fetch(`/worker/room/${roomId}?type=sync`);
                     if (syncResponse.ok) {
                         const syncData = await syncResponse.json();
                         // If stream is active (ts > 0), use that. Else default to local time.
@@ -83,7 +83,7 @@ export default function AudioPlayer({ roomId, username }: { roomId: string, user
 
                     try {
                         const response = await fetch(
-                            `${process.env.NEXT_PUBLIC_WORKER_URL}/room/${roomId}?ts=${nextTimestamp}`
+                            `/worker/room/${roomId}?ts=${nextTimestamp}`
                         );
 
                         if (response.ok) {

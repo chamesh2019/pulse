@@ -51,7 +51,7 @@ export default function Microphone({ roomId }: { roomId: string }) {
 
     const uploadHeader = async (blob: Blob) => {
         try {
-            await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/room/${roomId}?type=header`, {
+            await fetch(`/worker/room/${roomId}?type=header`, {
                 method: 'POST',
                 body: blob,
             });
@@ -64,7 +64,7 @@ export default function Microphone({ roomId }: { roomId: string }) {
     // 5. The Upload Logic
     const uploadFragment = async (blob: Blob, timestamp: number) => {
         try {
-            await fetch(`${process.env.NEXT_PUBLIC_WORKER_URL}/room/${roomId}?ts=${timestamp}`, {
+            await fetch(`/worker/room/${roomId}?ts=${timestamp}`, {
                 method: 'POST',
                 body: blob,
             });
