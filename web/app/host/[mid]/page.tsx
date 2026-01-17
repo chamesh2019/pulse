@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import AudioHandler from "@/components/audioListner";
 
+export const runtime = 'edge';
+
 export default function MeetingRoom() {
     const { mid } = useParams();
     const [isMuted, setIsMuted] = useState(false);
