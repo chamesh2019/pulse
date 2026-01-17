@@ -19,8 +19,7 @@ export default function Microphone({ roomId }: { roomId: string }) {
             const recorder = new MediaRecorder(stream, options);
             mediaRecorderRef.current = recorder;
 
-            // 3. THE MAGIC: Handle the "Slice"
-            // This runs every time the timeslice interval (set below) finishes.
+            const chunkSize = Number(process.env.NEXT_PUBLIC_CHUNK_LENGTH);
             recorder.ondataavailable = async (event) => {
                 if (event.data.size > 0) {
                     if (chunksCountRef.current === 0) {
@@ -28,15 +27,12 @@ export default function Microphone({ roomId }: { roomId: string }) {
                     }
                     chunksCountRef.current++;
 
-                    // Generate the exact timestamp for this fragment
-                    const timestamp = Math.floor(Date.now() / 1000) * 1000;
+                    const timestamp = Math.floor(Date.now() / chunkSize) * chunkSize;
                     await uploadFragment(event.data, timestamp);
                 }
             };
 
-            // 4. Start Recording with a 1000ms (1 second) slice
-            // Change this to 200 for lower latency (but more requests)
-            recorder.start(1000);
+            recorder.start(chunkSize);
             setIsRecording(true);
 
         } catch (err) {

@@ -9,8 +9,8 @@ export default function AudioPlayer({ roomId, username }: { roomId: string, user
     const [status, setStatus] = useState("Initializing...");
 
     // Configuration
-    const CHUNK_DURATION = 1000; // Match your recorder (1s)
-    const BUFFER_DELAY = 3000;   // Start playing 1 second in the past (to let chunks upload)
+    const CHUNK_DURATION = Number(process.env.NEXT_PUBLIC_CHUNK_LENGTH);
+    const BUFFER_DELAY = Number(process.env.NEXT_PUBLIC_BUFFER_DELAY);
 
     useEffect(() => {
         if (!audioRef.current) return;
@@ -76,7 +76,7 @@ export default function AudioPlayer({ roomId, username }: { roomId: string, user
                 }
 
                 // Align to chunk duration
-                nextTimestamp = Math.floor(nextTimestamp / 1000) * 1000;
+                nextTimestamp = Math.floor(nextTimestamp / CHUNK_DURATION) * CHUNK_DURATION;
 
                 const fetchNextChunk = async () => {
                     if (mediaSource.readyState !== 'open') return;
