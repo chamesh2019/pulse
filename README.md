@@ -81,8 +81,8 @@ pulse/
 │   │       └── [mid]/
 │   │           └── page.tsx
 │   ├── components/
-│   │   ├── audioListner.tsx    # Microphone capture component
-│   │   └── audioPlayback.tsx   # Audio playback component
+│   │   ├── audioListner.tsx    # Microphone capture and recording component
+│   │   └── audioPlayback.tsx   # Audio streaming playback component
 │   └── package.json
 └── worker/                 # Cloudflare Worker
     ├── src/
