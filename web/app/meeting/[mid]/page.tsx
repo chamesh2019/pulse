@@ -4,7 +4,7 @@ export const runtime = 'edge';
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import AudioPlayer from "@/components/audioPlayback";
+import AudioHandler from "@/components/audioHandler";
 
 export default function MeetingViewer() {
     const { mid } = useParams();
@@ -22,7 +22,9 @@ export default function MeetingViewer() {
                 <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500 rounded-full blur-[128px]" />
             </div>
 
-            <AudioPlayer roomId={mid as string} username="Host" />
+            <div className="mb-8">
+                <AudioHandler roomId={mid as string} username="Host" />
+            </div>
 
             <div className="relative z-10 w-full max-w-md space-y-6">
 
