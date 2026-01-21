@@ -4,7 +4,9 @@ export const runtime = 'edge';
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import AudioHandler from "@/components/audioHandler";
+import dynamic from 'next/dynamic';
+
+const AudioHandler = dynamic(() => import('@/components/audioHandler'), { ssr: false });
 
 export default function MeetingViewer() {
     const { mid } = useParams();

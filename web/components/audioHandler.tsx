@@ -1,69 +1,68 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import RecordRTC, { StereoAudioRecorder } from 'recordrtc';
+// @ts-ignore
+import PCMPlayer from 'pcm-player';
 
 export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: string, username?: string }) {
     const socketRef = useRef<WebSocket | null>(null);
-    const sourceBufferRef = useRef<SourceBuffer | null>(null);
+    const playerRef = useRef<any>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null); // Keep ref to stop it later
+    const recorderRef = useRef<RecordRTC | null>(null);
 
-    // CRITICAL FIX 1: Use a Ref for mute state so the event listener sees the LIVE value
     const isMutedRef = useRef(true);
 
     const [isConnected, setIsConnected] = useState(false);
     const [isMuted, setIsMuted] = useState(true);
     const [audioData, setAudioData] = useState<number[]>(new Array(5).fill(0));
 
-    // Sync state with ref
     useEffect(() => {
         isMutedRef.current = isMuted;
     }, [isMuted]);
 
     useEffect(() => {
-        const WS_HOST = process.env.NEXT_PUBLIC_API_URL || 'ws://localhost:8788';
-        // Use wss:// if on https (production safety)
+        const WS_HOST = process.env.NEXT_PUBLIC_API_URL || 'ws://localhost:8787';
+        // Ensure robust protocol handling
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = `${WS_HOST.replace('http', 'ws')}/room/${roomId}`;
+        let wsBase = WS_HOST;
+        if (wsBase.startsWith('http')) {
+            wsBase = wsBase.replace('http', 'ws');
+        }
+
+        const wsUrl = `${wsBase}/room/${roomId}`;
+        console.log("Connecting to:", wsUrl);
 
         const socket = new WebSocket(wsUrl);
         socketRef.current = socket;
+        socket.binaryType = 'arraybuffer';
 
         socket.onopen = () => setIsConnected(true);
         socket.onclose = () => setIsConnected(false);
 
-        // Initialize MediaSource for PLAYBACK
-        const mediaSource = new MediaSource();
-        if (audioRef.current) {
-            audioRef.current.src = URL.createObjectURL(mediaSource);
-        }
+        // Initialize PCM Player
+        // Input Codec: Int16 (WAV default)
+        // Channels: 1
+        // Sample Rate: 44100 or 48000 (We will match Recorder)
+        const player = new PCMPlayer({
+            inputCodec: 'Int16',
+            channels: 1,
+            sampleRate: 44100,
+            flushTime: 200
+        } as any);
+        player.volume(1.0);
+        playerRef.current = player;
 
-        mediaSource.addEventListener("sourceopen", () => {
-            // CRITICAL FIX 2: Use the correct MimeType (WebM/Opus), not MP3
-            const mimeType = 'audio/webm;codecs=opus';
-
-            if (MediaSource.isTypeSupported(mimeType)) {
-                const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
-                sourceBufferRef.current = sourceBuffer;
-                sourceBuffer.mode = 'sequence';
-
-                socket.onmessage = async (event) => {
-                    try {
-                        // Only play if buffer is ready
-                        if (sourceBuffer.updating || mediaSource.readyState !== 'open') return;
-
-                        const arrayBuffer = await event.data.arrayBuffer();
-                        sourceBuffer.appendBuffer(arrayBuffer);
-                    } catch (e) {
-                        console.error("Playback error", e);
-                    }
-                };
-            } else {
-                console.error("Browser does not support audio/webm;codecs=opus");
+        socket.onmessage = (event) => {
+            try {
+                // Feed raw PCM data to player
+                player.feed(event.data);
+            } catch (e) {
+                console.error("Playback error", e);
             }
-        });
+        };
 
         return () => {
             socket.close();
@@ -71,12 +70,22 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
                 mediaStreamRef.current.getTracks().forEach(track => track.stop());
             }
             if (audioContextRef.current) audioContextRef.current.close();
+            if (recorderRef.current) {
+                recorderRef.current.destroy();
+                recorderRef.current = null;
+            }
+            if (playerRef.current) {
+                playerRef.current.destroy && playerRef.current.destroy();
+            }
         };
     }, [roomId]);
 
     const stopMicrophone = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop();
+        if (recorderRef.current) {
+            recorderRef.current.stopRecording(() => {
+            });
+            recorderRef.current.destroy();
+            recorderRef.current = null;
         }
         if (mediaStreamRef.current) {
             mediaStreamRef.current.getTracks().forEach(track => {
@@ -89,8 +98,6 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
             analyserRef.current = null;
         }
         if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-            // We can suspend instead of close to reuse, or close and recreate.
-            // Closing is safer to clear hardware indicator fully in some browsers.
             audioContextRef.current.close().catch(console.error);
             audioContextRef.current = null;
         }
@@ -98,13 +105,15 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
 
     const startMicrophone = async () => {
         try {
-            // Unlock Audio Context (Browser Policy)
-            if (audioRef.current?.paused) {
-                await audioRef.current.play().catch(e => console.log("Autoplay prevented:", e));
-            }
-
             if (!mediaStreamRef.current) {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 44100,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
                 mediaStreamRef.current = stream;
 
                 // Setup Analysis
@@ -117,34 +126,37 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
                 source.connect(analyser);
                 analyserRef.current = analyser;
 
-                // Setup Recorder
-                // CRITICAL FIX 3: Explicitly ask for Opus to match receiver
-                const mimeType = 'audio/webm;codecs=opus';
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    console.error("Browser does not support audio/webm;codecs=opus");
-                    alert("Your browser does not support the required audio format.");
-                    return;
-                }
-
-                const mediaRecorder = new MediaRecorder(stream, { mimeType });
-                mediaRecorderRef.current = mediaRecorder;
-
-                mediaRecorder.ondataavailable = (event) => {
-                    // Use ref to check current mute state immediately
-                    if (event.data.size > 0 && socketRef.current?.readyState === WebSocket.OPEN && !isMutedRef.current) {
-                        socketRef.current.send(event.data);
+                // RecordRTC configuration
+                const recorder = new RecordRTC(stream, {
+                    type: 'audio',
+                    recorderType: StereoAudioRecorder,
+                    mimeType: 'audio/wav',
+                    timeSlice: 500, // Frequent slices for low latency
+                    desiredSampRate: 44100,
+                    numberOfAudioChannels: 1,
+                    ondataavailable: async (blob) => {
+                        if (blob.size > 0 && socketRef.current?.readyState === WebSocket.OPEN && !isMutedRef.current) {
+                            // Strip WAV header (44 bytes) for streaming PCM
+                            // Note: StereoAudioRecorder with timeSlice usually sends a full WAV file each slice (header + data).
+                            // We need to strip the 44-byte header to get raw Int16 PCM.
+                            const buffer = await blob.arrayBuffer();
+                            if (buffer.byteLength > 44) {
+                                const pcmData = buffer.slice(44);
+                                socketRef.current.send(pcmData);
+                            }
+                        }
                     }
-                };
+                });
 
-                // Start recording with 100ms chunks
-                mediaRecorder.start(100);
+                recorder.startRecording();
+                recorderRef.current = recorder;
             }
 
             // Visualizer Loop
             const updateVisualizer = () => {
                 if (isMutedRef.current) {
                     setAudioData(new Array(5).fill(0.1));
-                    return; // Stop loop if muted to save CPU
+                    return;
                 }
 
                 if (analyserRef.current) {
@@ -156,26 +168,20 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
                 }
             };
 
-            // Start the loop
             requestAnimationFrame(updateVisualizer);
 
         } catch (err) {
             console.error("Microphone error:", err);
             alert("Could not access microphone. Please ensure permissions are granted.");
-            setIsMuted(true); // Revert UI to muted if failed
+            setIsMuted(true);
         }
     };
 
     const toggleMute = () => {
         if (isMuted) {
-            // Unmuting: Start mic and update state
             setIsMuted(false);
-            // We need to wait for state update in startMicrophone? 
-            // Actually startMicrophone relies on mediaStreamRef, not state, so it's fine.
-            // But verify isMutedRef sync.
             startMicrophone();
         } else {
-            // Muting: Stop everything
             setIsMuted(true);
             stopMicrophone();
         }
@@ -183,6 +189,7 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
 
     return (
         <div className="bg-neutral-900/50 backdrop-blur-md border border-white/5 p-6 rounded-3xl flex flex-col items-center gap-6 w-full max-w-sm shadow-xl">
+            {/* Audio element no longer needed for sourcebuffer, but helpful to 'unlock' audio context sometimes. Kept for safety or removed. */}
             <audio ref={audioRef} hidden playsInline />
 
             {/* Status Indicator */}
