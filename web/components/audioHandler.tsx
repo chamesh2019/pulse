@@ -42,10 +42,6 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
         socket.onopen = () => setIsConnected(true);
         socket.onclose = () => setIsConnected(false);
 
-        // Initialize PCM Player
-        // Input Codec: Int16 (WAV default)
-        // Channels: 1
-        // Sample Rate: 44100 or 48000 (We will match Recorder)
         const player = new PCMPlayer({
             inputCodec: 'Int16',
             channels: 1,
@@ -57,7 +53,6 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
 
         socket.onmessage = (event) => {
             try {
-                // Feed raw PCM data to player
                 player.feed(event.data);
             } catch (e) {
                 console.error("Playback error", e);
@@ -131,7 +126,7 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
                     type: 'audio',
                     recorderType: StereoAudioRecorder,
                     mimeType: 'audio/wav',
-                    timeSlice: 500, // Frequent slices for low latency
+                    timeSlice: 50, // Frequent slices for low latency
                     desiredSampRate: 44100,
                     numberOfAudioChannels: 1,
                     ondataavailable: async (blob) => {
