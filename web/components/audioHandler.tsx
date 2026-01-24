@@ -1,10 +1,15 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import RecordRTC, { StereoAudioRecorder } from 'recordrtc';
-// @ts-ignore
 import PCMPlayer from 'pcm-player';
 
-export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: string, username?: string }) {
+type User = {
+    name: string;
+    id: number;
+    isSpeaking: boolean;
+}
+
+export default function AudioHandler({ roomId, onUserListChange }: { roomId: string, onUserListChange?: (users: User[]) => void }) {
     const socketRef = useRef<WebSocket | null>(null);
     const playerRef = useRef<any>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -25,8 +30,6 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
 
     useEffect(() => {
         const WS_HOST = process.env.NEXT_PUBLIC_API_URL || 'ws://localhost:8787';
-        // Ensure robust protocol handling
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         let wsBase = WS_HOST;
         if (wsBase.startsWith('http')) {
             wsBase = wsBase.replace('http', 'ws');
@@ -36,11 +39,18 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
         console.log("Connecting to:", wsUrl);
 
         const socket = new WebSocket(wsUrl);
+
         socketRef.current = socket;
         socket.binaryType = 'arraybuffer';
 
-        socket.onopen = () => setIsConnected(true);
-        socket.onclose = () => setIsConnected(false);
+        socket.onopen = () => {
+            setIsConnected(true);
+            socket.send(JSON.stringify({ type: 'join', username: localStorage.getItem('username') || 'Guest' }));
+        };
+        socket.onclose = () => {
+            setIsConnected(false);
+            stopMicrophone();
+        };
 
         const player = new PCMPlayer({
             inputCodec: 'Int16',
@@ -52,6 +62,34 @@ export default function AudioHandler({ roomId, username = 'Guest' }: { roomId: s
         playerRef.current = player;
 
         socket.onmessage = (event) => {
+
+            const isBinary = typeof event.data !== "string";
+            let isJson = false;
+            if (!isBinary) {
+                try {
+                    JSON.parse(event.data as string);
+                    isJson = true;
+                } catch (e) {
+                    isJson = false;
+                }
+            }
+
+            if (isJson) {
+                const data = JSON.parse(event.data as string);
+                if (data.type === "userlist") {
+                    const users = data.users.map((user: string) => {
+                        return {
+                            name: user,
+                            id: Math.random() * 1000000000,
+                            isSpeaking: false
+                        };
+                    });
+                    console.log("User list updated:", users);
+                    onUserListChange?.(users);
+                }
+                return;
+            }
+
             try {
                 player.feed(event.data);
             } catch (e) {

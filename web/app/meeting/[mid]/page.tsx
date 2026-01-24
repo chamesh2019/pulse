@@ -8,14 +8,16 @@ import dynamic from 'next/dynamic';
 
 const AudioHandler = dynamic(() => import('@/components/audioHandler'), { ssr: false });
 
+type User = {
+    name: string;
+    id: number;
+    isSpeaking: boolean;
+}
+
 export default function MeetingViewer() {
     const { mid } = useParams();
 
-    const [participants] = useState([
-        { id: 1, name: "Host", isSpeaking: true },
-        { id: 2, name: "Alice Smith", isSpeaking: false },
-        { id: 3, name: "Bob Jones", isSpeaking: false },
-    ]);
+    const [participants, setParticipants] = useState<User[]>([]);
 
     return (
         <main className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 p-4 relative overflow-hidden">
@@ -25,7 +27,7 @@ export default function MeetingViewer() {
             </div>
 
             <div className="mb-8">
-                <AudioHandler roomId={mid as string} username="Host" />
+                <AudioHandler roomId={mid as string} onUserListChange={setParticipants} />
             </div>
 
             <div className="relative z-10 w-full max-w-md space-y-6">

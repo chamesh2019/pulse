@@ -7,6 +7,7 @@ export interface Env {
 export class MeetingRoom extends DurableObject {
 
     sessions: Set<WebSocket> = new Set();
+    users: Map<WebSocket, string> = new Map();
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
@@ -42,6 +43,28 @@ export class MeetingRoom extends DurableObject {
         this.sessions.add(session);
 
         session.addEventListener("message", (event) => {
+            const isBinary = typeof event.data !== "string";
+            let isJson = false;
+            if (!isBinary) {
+                try {
+                    JSON.parse(event.data as string);
+                    isJson = true;
+                } catch (e) {
+                    isJson = false;
+                }
+            }
+
+            if (isJson) {
+                const data = JSON.parse(event.data as string);
+                if (data.type === "join") {
+                    this.users.set(session, data.username);
+                    this.sessions.forEach((ws) => {
+                        ws.send(JSON.stringify({ type: "userlist", users: Array.from(this.users.values()) }));
+                    });
+                }
+                return;
+            }
+
             this.sessions.forEach((ws) => {
                 if (ws !== session) {
                     ws.send(event.data);
@@ -51,6 +74,10 @@ export class MeetingRoom extends DurableObject {
 
         session.addEventListener("close", () => {
             this.sessions.delete(session);
+            this.users.delete(session);
+            this.sessions.forEach((ws) => {
+                ws.send(JSON.stringify({ type: "userlist", users: Array.from(this.users.values()) }));
+            });
         });
     }
 }

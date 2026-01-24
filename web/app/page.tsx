@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 export default function Home() {
   const router = useRouter();
   const [meetingId, setMeetingId] = useState("");
-  const [name, setName] = useState("");
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (meetingId.trim() && name.trim()) {
-      console.log("Joining meeting:", meetingId, "as", name);
+    if (meetingId.trim()) {
+      console.log("Joining meeting:", meetingId);
       router.push(`/meeting/${meetingId}`);
     }
   };
@@ -44,8 +43,7 @@ export default function Home() {
                 name="name"
                 type="text"
                 required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => localStorage.setItem('username', e.target.value)}
                 className="outline-none block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
                 placeholder="Enter your name"
               />
