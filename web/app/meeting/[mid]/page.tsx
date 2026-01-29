@@ -1,5 +1,8 @@
 "use client";
 
+// do not remove needed for cloudflare edge runtime
+export const runtime = 'edge';
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from 'next/dynamic';
