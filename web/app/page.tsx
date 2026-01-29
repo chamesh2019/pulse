@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { v4 as uuidv4 } from 'uuid';
 
 export default function Home() {
   const router = useRouter();
   const [meetingId, setMeetingId] = useState("");
+  const [username, setUsername] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('username') || "";
+    }
+    return "";
+  });
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,6 +21,14 @@ export default function Home() {
       router.push(`/meeting/${meetingId}`);
     }
   };
+
+  useEffect(() => {
+    // Ensure userID exists in localStorage
+    const userID = localStorage.getItem('userID');
+    if (!userID) {
+      localStorage.setItem('userID', uuidv4());
+    }
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 p-4 relative overflow-hidden">
@@ -43,7 +58,11 @@ export default function Home() {
                 name="name"
                 type="text"
                 required
-                onChange={(e) => localStorage.setItem('username', e.target.value)}
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  localStorage.setItem('username', e.target.value);
+                }}
                 className="outline-none block w-full rounded-xl border-0 bg-neutral-900/50 py-4 px-4 text-white shadow-sm ring-1 ring-inset ring-neutral-800 placeholder:text-neutral-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-6 backdrop-blur-sm transition-all"
                 placeholder="Enter your name"
               />
