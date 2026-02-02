@@ -5,7 +5,8 @@ export const STREAM_TYPES = {
     JOIN_REQUEST: 4,
     SCREEN_SHARE: 5,
     SCREEN_SHARE_STOP: 6,
-    SCREEN_SHARE_START: 7
+    SCREEN_SHARE_START: 7,
+    CHAT: 8
 }
 
 export const USER_ID_LENGTH = 36;

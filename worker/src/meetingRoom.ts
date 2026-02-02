@@ -65,13 +65,10 @@ export class MeetingRoom extends DurableObject {
 
                 console.log("User joined", userId, username);
 
-                // If there is an active screen share, send the cached init segment to the new user
-                // If there is an active screen share, send the cached init segment to the new user
                 if (this.activeScreenShareUserId) {
                     const encoder = new TextEncoder();
                     const senderIdBytes = encoder.encode(this.activeScreenShareUserId);
 
-                    // 1. Send START message if we have mimetype
                     if (this.activeScreenShareMimeType) {
                         const mimeBytes = encoder.encode(this.activeScreenShareMimeType!);
                         const startMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + mimeBytes.length);
@@ -81,7 +78,6 @@ export class MeetingRoom extends DurableObject {
                         session.send(startMsg);
                     }
 
-                    // 2. Send Init Segment
                     if (this.screenShareInitSegment) {
                         const initMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + this.screenShareInitSegment.length);
                         initMsg.set(senderIdBytes);
@@ -95,15 +91,11 @@ export class MeetingRoom extends DurableObject {
 
                 this.broadcastUserList();
             } else if (streamType === STREAM_TYPES.SCREEN_SHARE) {
-                // If this is a new share (or restart), cache the first chunk (Init Segment)
                 if (this.activeScreenShareUserId !== userId) {
                     console.log("New screen share started by", userId);
                     this.activeScreenShareUserId = userId;
                     this.screenShareInitSegment = buffer;
-                    // Assume first chunk is init segment. 
-                    // Ideally we check if it is, but MediaRecorder usually sends it first.
                 } else if (this.activeScreenShareUserId === userId && !this.screenShareInitSegment) {
-                    // Just in case it was null
                     this.screenShareInitSegment = buffer;
                 }
             } else if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
@@ -112,6 +104,7 @@ export class MeetingRoom extends DurableObject {
                 this.activeScreenShareUserId = userId;
                 this.activeScreenShareMimeType = mimeType;
                 this.screenShareInitSegment = null;
+
             } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
                 if (this.activeScreenShareUserId === userId) {
                     console.log("Screen share stopped by", userId);
@@ -129,14 +122,12 @@ export class MeetingRoom extends DurableObject {
         });
 
         session.addEventListener("close", () => {
-            // Handle if sharer leaves
             const user = this.users.get(session);
             if (user && user.userID === this.activeScreenShareUserId) {
                 console.log("Active sharer disconnected:", user.userID);
                 this.activeScreenShareUserId = null;
                 this.screenShareInitSegment = null;
 
-                // Broadcast STOP to others
                 const encoder = new TextEncoder();
                 const userIdBytes = encoder.encode(user.userID);
                 const stopMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH);

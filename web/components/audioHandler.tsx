@@ -1,99 +1,35 @@
 'use client';
-import { useRef, useCallback, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { User, createAudioMessage } from '@/modules/protocol';
-import { USER_ID_LENGTH, STREAM_TYPE_LENGTH, STREAM_TYPES } from '@/components/constants';
-import { useAudioController } from '@/hooks/useAudioController';
-import { useMeetingSocket } from '@/hooks/useMeetingSocket';
-import { useScreenShare } from '@/hooks/useScreenShare';
+import { SidePanelMode } from '@/app/meeting/[mid]/page';
 
-export default function AudioHandler({ roomId, onUserListChange, onScreenData, onScreenShareStart }: {
-    roomId: string,
-    onUserListChange?: (users: User[]) => void,
-    onScreenData?: (userId: string, data: Uint8Array) => void,
-    onScreenShareStart?: (userId: string, mimeType: string) => void
-}) {
-    // 1. User Identity
-    const getUserId = () => {
-        if (typeof window === 'undefined') return '';
-        let id = localStorage.getItem('userID');
-        if (!id) {
-            id = uuidv4();
-            localStorage.setItem('userID', id);
-        }
-        return id;
-    };
-    const userId = getUserId();
-    const username = (typeof window !== 'undefined' ? localStorage.getItem('username') : 'Guest') || 'Guest';
+interface AudioHandlerProps {
+    isMuted: boolean;
+    onToggleMute: () => void;
+    isSharing: boolean;
+    onStartScreenShare: () => void;
+    onStopScreenShare: () => void;
+    isConnected: boolean;
+    sidePanelMode: SidePanelMode;
+    onSetSidePanelMode: (mode: SidePanelMode) => void;
+    showSidePanelControls: boolean;
+}
 
-    // 2. Audio Controller & Socket Wrapper
-    const sendAudioRef = useRef<((data: Uint8Array) => void) | null>(null);
-    const sendScreenRef = useRef<((data: Uint8Array) => void) | null>(null);
-
-    const onAudioDataWrapper = useCallback((pcmData: Uint8Array) => {
-        if (sendAudioRef.current) {
-            sendAudioRef.current(createAudioMessage(userId, pcmData));
-        }
-    }, [userId]);
-
-    const onScreenDataWrapper = useCallback((data: Uint8Array) => {
-        if (sendScreenRef.current) {
-            // Check if it's a stop message (length === header length)
-            const isStop = data.byteLength === USER_ID_LENGTH + STREAM_TYPE_LENGTH;
-            console.log(`[AudioHandler] Sending screen data. Size: ${data.byteLength}. IsStop: ${isStop}`);
-
-            sendScreenRef.current(data); // Send to server
-
-            // Loopback to local UI
-            // Message format: [UserId(36)] + [Type(1)] + [Payload]
-            const streamType = data[USER_ID_LENGTH];
-            const payload = data.slice(USER_ID_LENGTH + STREAM_TYPE_LENGTH);
-
-            if (streamType === STREAM_TYPES.SCREEN_SHARE) {
-                if (onScreenData) onScreenData(userId, payload);
-            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
-                if (onScreenShareStart) {
-                    const mimeType = new TextDecoder().decode(payload);
-                    onScreenShareStart(userId, mimeType);
-                }
-            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
-                if (onScreenData) onScreenData(userId, new Uint8Array(0));
-            }
-        } else {
-            console.error("sendScreenRef is null! Cannot send screen data.");
-        }
-    }, [userId, onScreenData]);
-
-    const { isMuted, toggleMute, feedAudio } = useAudioController(onAudioDataWrapper);
-    const { isSharing, startScreenShare, stopScreenShare } = useScreenShare({
-        userId,
-        onData: onScreenDataWrapper
-    });
-
-    // 3. Socket Connection
-    const { isConnected, sendMessage } = useMeetingSocket({
-        roomId,
-        userId,
-        username,
-        onUserListUpdate: onUserListChange,
-        onAudioData: (_senderId, buffer) => {
-            feedAudio(buffer.buffer as ArrayBuffer);
-        },
-        onScreenData: onScreenData,
-        onScreenShareStart: onScreenShareStart
-    });
-
-    // Update refs inside useEffect to avoid updating refs during render
-    useEffect(() => {
-        sendAudioRef.current = sendMessage;
-        sendScreenRef.current = sendMessage;
-    }, [sendMessage]);
+export default function AudioHandler({
+    isMuted,
+    onToggleMute,
+    isSharing,
+    onStartScreenShare,
+    onStopScreenShare,
+    isConnected,
+    sidePanelMode,
+    onSetSidePanelMode,
+    showSidePanelControls
+}: AudioHandlerProps) {
 
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-2 rounded-full flex items-center gap-4 shadow-2xl z-50">
             {/* Screen Share Button */}
             <button
-                onClick={isSharing ? stopScreenShare : startScreenShare}
+                onClick={isSharing ? onStopScreenShare : onStartScreenShare}
                 className={`group flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${isSharing ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}
                 title="Share Screen"
             >
@@ -106,7 +42,7 @@ export default function AudioHandler({ roomId, onUserListChange, onScreenData, o
 
             {/* Mute Button */}
             <button
-                onClick={toggleMute}
+                onClick={onToggleMute}
                 className={`group flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${isMuted ? 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700' : 'bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] hover:scale-105 active:scale-95'}`}
             >
                 {isMuted ? (
@@ -116,8 +52,31 @@ export default function AudioHandler({ roomId, onUserListChange, onScreenData, o
                 )}
             </button>
 
+            {/* Side Panel Toggles (Visible when sharing) */}
+            {showSidePanelControls && (
+                <>
+                    <div className="w-px h-8 bg-white/10 mx-1"></div>
+                    <div className="flex bg-neutral-800/50 rounded-full p-1 border border-white/5">
+                        <button
+                            onClick={() => onSetSidePanelMode('users')}
+                            className={`p-2 rounded-full transition-all ${sidePanelMode === 'users' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}
+                            title="Users"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        </button>
+                        <button
+                            onClick={() => onSetSidePanelMode('chat')}
+                            className={`p-2 rounded-full transition-all ${sidePanelMode === 'chat' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}
+                            title="Chat"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        </button>
+                    </div>
+                </>
+            )}
+
             {/* Status & Info */}
-            <div className="flex flex-col pr-4">
+            <div className="flex flex-col pr-4 pl-2">
                 <span className="text-xs font-semibold text-white">
                     {isMuted ? 'Muted' : 'Speaking'}
                 </span>

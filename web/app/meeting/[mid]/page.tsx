@@ -3,34 +3,93 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from 'next/dynamic';
+import { v4 as uuidv4 } from 'uuid';
+import { useMeetingSocket } from "@/hooks/useMeetingSocket";
+import { useAudioController } from "@/hooks/useAudioController";
+import { useScreenShare } from "@/hooks/useScreenShare";
+import { User, createAudioMessage, createScreenShareMessage, createScreenShareStopMessage, createScreenShareStartMessage, createChatTextMessage, createChatImageMessage, ParsedMessage } from "@/modules/protocol";
+import Chat, { ChatMessage } from "@/components/Chat";
+import { USER_ID_LENGTH, STREAM_TYPE_LENGTH, STREAM_TYPES } from '@/components/constants';
 
 const AudioHandler = dynamic(() => import('@/components/audioHandler'), { ssr: false });
 const ScreenSharePlayer = dynamic(() => import('@/components/ScreenSharePlayer'), { ssr: false });
 
-type User = {
-    name: string;
-    id: string;
-    isSpeaking: boolean;
-}
+export type SidePanelMode = 'users' | 'chat';
+
+// Helper to get Blob URL for image
+const getImageBlobUrl = (data: Uint8Array) => {
+    const blob = new Blob([data as any], { type: 'image/png' });
+    return URL.createObjectURL(blob);
+};
 
 export default function MeetingViewer() {
     const { mid } = useParams();
 
+    // --- State ---
     const [participants, setParticipants] = useState<User[]>([]);
     const [currentUserId] = useState<string>(() => {
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('userID') || "";
+            let id = localStorage.getItem('userID');
+            if (!id) {
+                id = uuidv4();
+                localStorage.setItem('userID', id);
+            }
+            return id;
         }
         return "";
     });
+    const [username] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('username') : 'Guest') || 'Guest');
     const [time, setTime] = useState<Date>(() => new Date());
 
     const [sharingUserId, setSharingUserId] = useState<string | null>(null);
     const [screenShareMimeType, setScreenShareMimeType] = useState<string>('video/webm; codecs="vp8"'); // Default
     const screenShareInputRef = useRef<((data: Uint8Array) => void) | null>(null);
 
-    const handleScreenData = useCallback((userId: string, data: Uint8Array) => {
-        // If 0 length, it means stop
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>('users');
+
+    // --- Refs for sending data via Socket (hook return) ---
+    const sendSocketMessageRef = useRef<((data: Uint8Array) => void) | null>(null);
+
+    // --- Callbacks for Hooks ---
+
+    // 1. Audio Data
+    const onAudioDataWrapper = useCallback((pcmData: Uint8Array) => {
+        if (sendSocketMessageRef.current) {
+            sendSocketMessageRef.current(createAudioMessage(currentUserId, pcmData));
+        }
+    }, [currentUserId]);
+
+    // 2. Screen Data
+    // 2. Screen Data
+    const onScreenDataWrapper = useCallback((data: Uint8Array) => {
+        if (sendSocketMessageRef.current) {
+            // Check if it's a stop message
+            const isStop = data.byteLength === USER_ID_LENGTH + STREAM_TYPE_LENGTH;
+            // console.log(`[Page] Sending screen data. Size: ${data.byteLength}. IsStop: ${isStop}`);
+
+            sendSocketMessageRef.current(data); // Send to server
+
+            // Loopback to local UI so the sharer sees what they are sharing
+            if (screenShareInputRef.current) {
+                screenShareInputRef.current(data);
+            }
+
+            // Also ensure local mode is updated if we start sharing
+            if (!isStop) {
+                setSharingUserId(current => current === currentUserId ? current : currentUserId);
+            } else {
+                setSharingUserId(null);
+            }
+        }
+    }, [currentUserId]);
+
+    // 3. Socket Callbacks
+    const handleUserListUpdate = useCallback((users: User[]) => {
+        setParticipants(users);
+    }, []);
+
+    const handleScreenDataIncoming = useCallback((userId: string, data: Uint8Array) => {
         if (data.byteLength === 0) {
             setSharingUserId(null);
             return;
@@ -40,22 +99,108 @@ export default function MeetingViewer() {
             setSharingUserId(userId);
         }
 
-        // Pass data to player
         if (screenShareInputRef.current) {
             screenShareInputRef.current(data);
         }
     }, [sharingUserId]);
 
-    const handleScreenShareStart = useCallback((userId: string, mimeType: string) => {
+    const handleScreenShareStartIncoming = useCallback((userId: string, mimeType: string) => {
         console.log(`[Page] Screen Share Started by ${userId} with Mime: ${mimeType}`);
         setSharingUserId(userId);
         setScreenShareMimeType(mimeType);
+        // Default to showing user list or chat? User didn't specify. Let's keep logic.
     }, []);
 
+    const handleChatDataIncoming = useCallback((msg: ParsedMessage & { type: 'CHAT' }) => {
+        setChatMessages(prev => {
+            // Avoid duplicates if timestamp logic reused? Messages are ephemeral.
+            const newMsg: ChatMessage = {
+                senderId: msg.userId,
+                senderName: participants.find(p => p.id === msg.userId)?.name || 'Unknown',
+                subType: msg.subType,
+                text: msg.subType === 'TEXT' ? msg.text : undefined,
+                image: msg.subType === 'IMAGE' ? msg.image : undefined,
+                imageUrl: msg.subType === 'IMAGE' ? getImageBlobUrl(msg.image) : undefined,
+                timestamp: msg.timestamp,
+                isSelf: msg.userId === currentUserId
+            };
+            return [...prev, newMsg];
+        });
+    }, [currentUserId, participants]);
+
+    // --- Hooks ---
+
+    const { feedAudio, isMuted, toggleMute } = useAudioController(onAudioDataWrapper);
+
+    const { isSharing, startScreenShare, stopScreenShare } = useScreenShare({
+        userId: currentUserId,
+        onData: onScreenDataWrapper
+    });
+
+    const { sendMessage, isConnected } = useMeetingSocket({
+        roomId: mid as string,
+        userId: currentUserId,
+        username,
+        onUserListUpdate: handleUserListUpdate,
+        onAudioData: (_senderId, buffer) => feedAudio(buffer.buffer as ArrayBuffer),
+        onScreenData: handleScreenDataIncoming,
+        onScreenShareStart: handleScreenShareStartIncoming,
+        onChatData: handleChatDataIncoming
+    });
+
+    // Update ref
+    useEffect(() => {
+        sendSocketMessageRef.current = sendMessage;
+    }, [sendMessage]);
+
+    // Clock
     useEffect(() => {
         const timer = setInterval(() => setTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
+
+    // --- Handlers ---
+    const handleSendMessage = (text: string) => {
+        if (sendSocketMessageRef.current) {
+            const msg = createChatTextMessage(currentUserId, text);
+            sendSocketMessageRef.current(msg);
+            // Optimistic update
+            const newMsg: ChatMessage = {
+                senderId: currentUserId,
+                senderName: 'You',
+                subType: 'TEXT',
+                text: text,
+                timestamp: Date.now(),
+                isSelf: true
+            };
+            setChatMessages(prev => [...prev, newMsg]);
+        }
+    };
+
+    const handleSendImage = (image: Uint8Array) => {
+        if (sendSocketMessageRef.current) {
+            const msg = createChatImageMessage(currentUserId, image);
+            sendSocketMessageRef.current(msg);
+            // Optimistic update
+            const newMsg: ChatMessage = {
+                senderId: currentUserId,
+                senderName: 'You',
+                subType: 'IMAGE',
+                image: image,
+                imageUrl: getImageBlobUrl(image),
+                timestamp: Date.now(),
+                isSelf: true
+            };
+            setChatMessages(prev => [...prev, newMsg]);
+        }
+    }
+
+
+    // --- Render Logic ---
+
+    // Layout Logic:
+    // 1. Not Sharing: Main = User Grid. Sidebar = Chat (Always).
+    // 2. Sharing: Main = Screen. Sidebar = (User List OR Chat) based on sidePanelMode.
 
     return (
         <main className="h-screen bg-black text-white selection:bg-blue-500/30 flex flex-col overflow-hidden">
@@ -81,11 +226,12 @@ export default function MeetingViewer() {
                 </div>
             </header>
 
-            {/* Main Content */}
+            {/* Main Content Area */}
             <div className="flex-1 flex overflow-hidden relative">
 
-                {/* Left Panel: Screen Share */}
-                {sharingUserId && (
+                {/* Center / Main View */}
+                {sharingUserId ? (
+                    // Sharing Mode: Screen is Main
                     <div className="flex-1 bg-neutral-950 flex flex-col relative border-r border-white/10 p-4">
                         <div className="flex-1 relative rounded-2xl overflow-hidden border border-white/5 bg-black shadow-2xl">
                             <ScreenSharePlayer inputRef={screenShareInputRef} mimeType={screenShareMimeType} />
@@ -96,76 +242,134 @@ export default function MeetingViewer() {
                             </div>
                         </div>
                     </div>
-                )}
-
-                {/* Right Panel / Main View: User List */}
-                <div className={`${sharingUserId ? 'w-80 flex-none bg-neutral-900/50' : 'flex-1'} overflow-y-auto transition-all duration-300 p-4 custom-scrollbar`}>
-                    <div className={`${sharingUserId ? 'flex flex-col gap-2' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4'}`}>
-                        {participants.map(p => (
-                            <div
-                                key={p.id}
-                                className={`
-                                    relative group transition-all duration-300
-                                    ${sharingUserId
-                                        ? 'flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10'
-                                        : 'aspect-square rounded-3xl bg-neutral-900/50 border border-white/10 p-6 flex flex-col justify-between hover:bg-neutral-800'
-                                    }
-                                `}
-                            >
-                                {/* Avatar */}
-                                <div className={`
-                                    rounded-full flex items-center justify-center font-bold relative transition-all
-                                    ${sharingUserId ? 'w-10 h-10 text-sm' : 'w-16 h-16 text-xl mb-4'}
-                                    ${p.id === currentUserId ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.3)]' : 'bg-neutral-800 text-neutral-400'}
-                                `}>
-                                    {p.name.charAt(0)}
-                                    {p.isSpeaking && (
-                                        <div className="absolute inset-0 rounded-full border-2 border-green-500 animate-ping opacity-50"></div>
-                                    )}
-                                </div>
-
-                                {/* User Info */}
-                                <div className={`${sharingUserId ? 'flex-1 min-w-0' : 'text-center'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`truncate font-medium ${p.id === currentUserId ? 'text-white' : 'text-neutral-300'}`}>
-                                            {p.name} {p.id === currentUserId && '(You)'}
-                                        </span>
+                ) : (
+                    // Not Sharing Mode: User Grid is Main
+                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-neutral-900/50">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {participants.map(p => (
+                                <div
+                                    key={p.id}
+                                    className={`
+                                        relative group transition-all duration-300
+                                        aspect-square rounded-3xl bg-neutral-900/50 border border-white/10 p-6 flex flex-col justify-between hover:bg-neutral-800
+                                    `}
+                                >
+                                    {/* Avatar */}
+                                    <div className={`
+                                        rounded-full flex items-center justify-center font-bold relative transition-all w-16 h-16 text-xl mb-4
+                                        ${p.id === currentUserId ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.3)]' : 'bg-neutral-800 text-neutral-400'}
+                                    `}>
+                                        {p.name.charAt(0)}
+                                        {p.isSpeaking && (
+                                            <div className="absolute inset-0 rounded-full border-2 border-green-500 animate-ping opacity-50"></div>
+                                        )}
                                     </div>
-                                    {sharingUserId && (
-                                        <div className="text-xs text-neutral-500 truncate">
-                                            {p.isSpeaking ? 'Speaking...' : 'Listener'}
+
+                                    {/* User Info */}
+                                    <div className="text-center">
+                                        <div className="flex items-center gap-2 justify-center">
+                                            <span className={`truncate font-medium ${p.id === currentUserId ? 'text-white' : 'text-neutral-300'}`}>
+                                                {p.name} {p.id === currentUserId && '(You)'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Speaking Visualizer */}
+                                    {p.isSpeaking && (
+                                        <div className="flex justify-center gap-1 h-4 items-end mt-2">
+                                            <span className="w-1 bg-green-500 rounded-full animate-[bounce_1s_infinite] h-full"></span>
+                                            <span className="w-1 bg-green-500 rounded-full animate-[bounce_1.2s_infinite] h-2/3"></span>
+                                            <span className="w-1 bg-green-500 rounded-full animate-[bounce_0.8s_infinite] h-3/4"></span>
                                         </div>
                                     )}
                                 </div>
-
-                                {/* Speaking Visualizer (Grid Mode) */}
-                                {!sharingUserId && p.isSpeaking && (
-                                    <div className="flex justify-center gap-1 h-4 items-end mt-2">
-                                        <span className="w-1 bg-green-500 rounded-full animate-[bounce_1s_infinite] h-full"></span>
-                                        <span className="w-1 bg-green-500 rounded-full animate-[bounce_1.2s_infinite] h-2/3"></span>
-                                        <span className="w-1 bg-green-500 rounded-full animate-[bounce_0.8s_infinite] h-3/4"></span>
-                                    </div>
-                                )}
-
-                                {/* Speaking Indicator (List Mode) */}
-                                {sharingUserId && p.isSpeaking && (
-                                    <div className="flex gap-0.5 items-end h-3 w-4 justify-center">
-                                        <span className="w-0.5 h-full bg-green-500 animate-pulse"></span>
-                                        <span className="w-0.5 h-2/3 bg-green-500 animate-pulse"></span>
-                                        <span className="w-0.5 h-full bg-green-500 animate-pulse"></span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
+                )}
+
+
+                {/* Side Panel / Sidebar */}
+                {/* 
+                    If Sharing: Show Side Panel IF (something is selected? Or just standard sidebar?)
+                    User said: "when someone is sharing the dock will get 2 icons to show chat and show userlist."
+                    This implies Side Panel is dynamic. 
+                    
+                    If Not Sharing: "chat as that list" -> Main is Grid, Sidebar is Chat.
+                */}
+
+                <div className={`
+                    bg-neutral-900 border-l border-white/10 flex flex-col transition-all duration-300
+                    ${sharingUserId ? 'w-80' : 'w-96'} 
+                `}>
+                    {(!sharingUserId) ? (
+                        // Not Sharing: Always Chat
+                        <Chat
+                            className="h-full"
+                            messages={chatMessages}
+                            onSendMessage={handleSendMessage}
+                            onSendImage={handleSendImage}
+                        />
+                    ) : (
+                        // Sharing: Toggled
+                        sidePanelMode === 'chat' ? (
+                            <Chat
+                                className="h-full"
+                                messages={chatMessages}
+                                onSendMessage={handleSendMessage}
+                                onSendImage={handleSendImage}
+                            />
+                        ) : (
+                            // User List
+                            <div className="flex flex-col h-full overflow-hidden">
+                                <div className="p-4 border-b border-white/10 font-semibold text-neutral-200">
+                                    Participants ({participants.length})
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                                    {participants.map(p => (
+                                        <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10">
+                                            <div className={`
+                                                w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs
+                                                ${p.id === currentUserId ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-neutral-400'}
+                                           `}>
+                                                {p.name.charAt(0)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-medium text-neutral-200 truncate">
+                                                    {p.name} {p.id === currentUserId && '(You)'}
+                                                </div>
+                                                <div className="text-xs text-neutral-500">
+                                                    {p.isSpeaking ? 'Speaking...' : 'Listener'}
+                                                </div>
+                                            </div>
+                                            {p.isSpeaking && (
+                                                <div className="flex gap-0.5 items-end h-3 w-4 justify-center">
+                                                    <span className="w-0.5 h-full bg-green-500 animate-pulse"></span>
+                                                    <span className="w-0.5 h-2/3 bg-green-500 animate-pulse"></span>
+                                                    <span className="w-0.5 h-full bg-green-500 animate-pulse"></span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    )}
                 </div>
+
             </div>
 
+            {/* Dock / Controls */}
             <AudioHandler
-                roomId={mid as string}
-                onUserListChange={setParticipants}
-                onScreenData={handleScreenData}
-                onScreenShareStart={handleScreenShareStart}
+                isMuted={isMuted}
+                onToggleMute={toggleMute}
+                isSharing={isSharing}
+                onStartScreenShare={startScreenShare}
+                onStopScreenShare={stopScreenShare}
+                isConnected={isConnected}
+                sidePanelMode={sidePanelMode}
+                onSetSidePanelMode={setSidePanelMode}
+                showSidePanelControls={!!sharingUserId}
             />
         </main>
     );
