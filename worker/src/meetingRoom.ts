@@ -41,6 +41,7 @@ export class MeetingRoom extends DurableObject {
 
     screenShareInitSegment: Uint8Array | null = null;
     activeScreenShareUserId: string | null = null;
+    activeScreenShareMimeType: string | null = null;
 
     handleSession(session: WebSocket) {
         session.accept();
@@ -65,18 +66,31 @@ export class MeetingRoom extends DurableObject {
                 console.log("User joined", userId, username);
 
                 // If there is an active screen share, send the cached init segment to the new user
-                if (this.activeScreenShareUserId && this.screenShareInitSegment) {
-                    // We need to reconstruct the message with the original sender ID
+                // If there is an active screen share, send the cached init segment to the new user
+                if (this.activeScreenShareUserId) {
                     const encoder = new TextEncoder();
                     const senderIdBytes = encoder.encode(this.activeScreenShareUserId);
 
-                    const initMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + this.screenShareInitSegment.length);
-                    initMsg.set(senderIdBytes);
-                    initMsg[USER_ID_LENGTH] = STREAM_TYPES.SCREEN_SHARE; // Ensure correct type
-                    initMsg.set(this.screenShareInitSegment, USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+                    // 1. Send START message if we have mimetype
+                    if (this.activeScreenShareMimeType) {
+                        const mimeBytes = encoder.encode(this.activeScreenShareMimeType!);
+                        const startMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + mimeBytes.length);
+                        startMsg.set(senderIdBytes);
+                        startMsg[USER_ID_LENGTH] = STREAM_TYPES.SCREEN_SHARE_START;
+                        startMsg.set(mimeBytes, USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+                        session.send(startMsg);
+                    }
 
-                    console.log("Sending cached screen share init segment to new user");
-                    session.send(initMsg);
+                    // 2. Send Init Segment
+                    if (this.screenShareInitSegment) {
+                        const initMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + this.screenShareInitSegment.length);
+                        initMsg.set(senderIdBytes);
+                        initMsg[USER_ID_LENGTH] = STREAM_TYPES.SCREEN_SHARE; // Ensure correct type
+                        initMsg.set(this.screenShareInitSegment, USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+
+                        console.log("Sending cached screen share init segment to new user");
+                        session.send(initMsg);
+                    }
                 }
 
                 this.broadcastUserList();
@@ -92,10 +106,17 @@ export class MeetingRoom extends DurableObject {
                     // Just in case it was null
                     this.screenShareInitSegment = buffer;
                 }
+            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
+                const mimeType = decoder.decode(buffer);
+                console.log("Screen share started by", userId, "with mime", mimeType);
+                this.activeScreenShareUserId = userId;
+                this.activeScreenShareMimeType = mimeType;
+                this.screenShareInitSegment = null;
             } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
                 if (this.activeScreenShareUserId === userId) {
                     console.log("Screen share stopped by", userId);
                     this.activeScreenShareUserId = null;
+                    this.activeScreenShareMimeType = null;
                     this.screenShareInitSegment = null;
                 }
             }
@@ -111,8 +132,22 @@ export class MeetingRoom extends DurableObject {
             // Handle if sharer leaves
             const user = this.users.get(session);
             if (user && user.userID === this.activeScreenShareUserId) {
+                console.log("Active sharer disconnected:", user.userID);
                 this.activeScreenShareUserId = null;
                 this.screenShareInitSegment = null;
+
+                // Broadcast STOP to others
+                const encoder = new TextEncoder();
+                const userIdBytes = encoder.encode(user.userID);
+                const stopMsg = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+                stopMsg.set(userIdBytes);
+                stopMsg[USER_ID_LENGTH] = STREAM_TYPES.SCREEN_SHARE_STOP;
+
+                this.sessions.forEach(ws => {
+                    if (ws !== session && ws.readyState === WebSocket.OPEN) {
+                        ws.send(stopMsg);
+                    }
+                });
             }
 
             this.sessions.delete(session);

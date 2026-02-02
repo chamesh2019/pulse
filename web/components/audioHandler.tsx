@@ -2,14 +2,16 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { User, createAudioMessage } from '@/modules/protocol';
+import { USER_ID_LENGTH, STREAM_TYPE_LENGTH, STREAM_TYPES } from '@/components/constants';
 import { useAudioController } from '@/hooks/useAudioController';
 import { useMeetingSocket } from '@/hooks/useMeetingSocket';
 import { useScreenShare } from '@/hooks/useScreenShare';
 
-export default function AudioHandler({ roomId, onUserListChange, onScreenData }: {
+export default function AudioHandler({ roomId, onUserListChange, onScreenData, onScreenShareStart }: {
     roomId: string,
     onUserListChange?: (users: User[]) => void,
-    onScreenData?: (userId: string, data: Uint8Array) => void
+    onScreenData?: (userId: string, data: Uint8Array) => void,
+    onScreenShareStart?: (userId: string, mimeType: string) => void
 }) {
     // 1. User Identity
     const getUserId = () => {
@@ -36,11 +38,31 @@ export default function AudioHandler({ roomId, onUserListChange, onScreenData }:
 
     const onScreenDataWrapper = useCallback((data: Uint8Array) => {
         if (sendScreenRef.current) {
-            sendScreenRef.current(data); // Already formatted by hook
+            // Check if it's a stop message (length === header length)
+            const isStop = data.byteLength === USER_ID_LENGTH + STREAM_TYPE_LENGTH;
+            console.log(`[AudioHandler] Sending screen data. Size: ${data.byteLength}. IsStop: ${isStop}`);
+
+            sendScreenRef.current(data); // Send to server
+
+            // Loopback to local UI
+            // Message format: [UserId(36)] + [Type(1)] + [Payload]
+            const streamType = data[USER_ID_LENGTH];
+            const payload = data.slice(USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+
+            if (streamType === STREAM_TYPES.SCREEN_SHARE) {
+                if (onScreenData) onScreenData(userId, payload);
+            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
+                if (onScreenShareStart) {
+                    const mimeType = new TextDecoder().decode(payload);
+                    onScreenShareStart(userId, mimeType);
+                }
+            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
+                if (onScreenData) onScreenData(userId, new Uint8Array(0));
+            }
         } else {
             console.error("sendScreenRef is null! Cannot send screen data.");
         }
-    }, []);
+    }, [userId, onScreenData]);
 
     const { isMuted, toggleMute, feedAudio } = useAudioController(onAudioDataWrapper);
     const { isSharing, startScreenShare, stopScreenShare } = useScreenShare({
@@ -57,7 +79,8 @@ export default function AudioHandler({ roomId, onUserListChange, onScreenData }:
         onAudioData: (_senderId, buffer) => {
             feedAudio(buffer.buffer as ArrayBuffer);
         },
-        onScreenData: onScreenData
+        onScreenData: onScreenData,
+        onScreenShareStart: onScreenShareStart
     });
 
     // Update refs inside useEffect to avoid updating refs during render

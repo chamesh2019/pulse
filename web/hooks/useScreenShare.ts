@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createScreenShareMessage, createScreenShareStopMessage } from '@/modules/protocol';
+import { createScreenShareMessage, createScreenShareStopMessage, createScreenShareStartMessage } from '@/modules/protocol';
 
 interface UseScreenShareProps {
     userId: string;
@@ -23,7 +23,9 @@ export function useScreenShare({ userId, onData }: UseScreenShareProps) {
 
         setIsSharing(false);
         // Send stop signal
-        onData(createScreenShareStopMessage(userId));
+        setTimeout(() => {
+            onData(createScreenShareStopMessage(userId));
+        }, 100);
     }, [userId, onData]);
 
     const startScreenShare = useCallback(async () => {
@@ -46,15 +48,38 @@ export function useScreenShare({ userId, onData }: UseScreenShareProps) {
 
             console.log("Stream started", stream);
 
-            const options = { mimeType: 'video/webm; codecs=vp8' };
+            // Codec selection
+            const codecs = [
+                'video/webm; codecs="vp9"',
+                'video/webm; codecs="vp8"',
+                'video/webm; codecs="avc1"', // H.264
+                'video/webm' // Fallback
+            ];
 
-            // Check support
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                console.warn(`${options.mimeType} is not supported, trying default`);
+            let selectedMimeType = "";
+
+            for (const codec of codecs) {
+                if (MediaRecorder.isTypeSupported(codec)) {
+                    selectedMimeType = codec;
+                    break;
+                }
             }
 
-            const mediaRecorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported(options.mimeType) ? options : undefined);
+            if (!selectedMimeType) {
+                console.warn("No supported codecs found in list, letting browser decide default");
+            } else {
+                console.log("Selected Screen Share Codec:", selectedMimeType);
+            }
+
+            const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+
+            const mediaRecorder = new MediaRecorder(stream, options);
             mediaRecorderRef.current = mediaRecorder;
+
+            // Send START message with MimeType
+            const usedMimeType = mediaRecorder.mimeType; // Browser might normalize it
+            console.log("Actual Recorder MimeType:", usedMimeType);
+            onData(createScreenShareStartMessage(userId, usedMimeType));
 
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
@@ -65,8 +90,7 @@ export function useScreenShare({ userId, onData }: UseScreenShareProps) {
                 }
             };
 
-            // Start recording with 100ms timeslice for low latency
-            mediaRecorder.start(100);
+            mediaRecorder.start(500);
 
         } catch (err) {
             console.error("Error starting screen share:", err);

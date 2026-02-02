@@ -8,6 +8,7 @@ interface UseMeetingSocketProps {
     onUserListUpdate?: (users: User[]) => void;
     onAudioData?: (userId: string, data: Uint8Array) => void;
     onScreenData?: (userId: string, data: Uint8Array) => void;
+    onScreenShareStart?: (userId: string, mimeType: string) => void;
 }
 
 export function useMeetingSocket({
@@ -16,7 +17,8 @@ export function useMeetingSocket({
     username,
     onUserListUpdate,
     onAudioData,
-    onScreenData
+    onScreenData,
+    onScreenShareStart
 }: UseMeetingSocketProps) {
     const socketRef = useRef<WebSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -25,12 +27,14 @@ export function useMeetingSocket({
     const onUserListUpdateRef = useRef(onUserListUpdate);
     const onAudioDataRef = useRef(onAudioData);
     const onScreenDataRef = useRef(onScreenData);
+    const onScreenShareStartRef = useRef(onScreenShareStart);
 
     useEffect(() => {
         onUserListUpdateRef.current = onUserListUpdate;
         onAudioDataRef.current = onAudioData;
         onScreenDataRef.current = onScreenData;
-    }, [onUserListUpdate, onAudioData, onScreenData]);
+        onScreenShareStartRef.current = onScreenShareStart;
+    }, [onUserListUpdate, onAudioData, onScreenData, onScreenShareStart]);
 
     useEffect(() => {
         const WS_HOST = process.env.NEXT_PUBLIC_API_URL || 'ws://localhost:8787';
@@ -83,6 +87,10 @@ export function useMeetingSocket({
                 // Simplest: `onScreenData` with 0-length buffer = stop.
                 if (parsed.userId !== userId && onScreenDataRef.current) {
                     onScreenDataRef.current(parsed.userId, new Uint8Array(0));
+                }
+            } else if (parsed.type === 'SCREEN_SHARE_START') {
+                if (parsed.userId !== userId && onScreenShareStartRef.current) {
+                    onScreenShareStartRef.current(parsed.userId, parsed.mimeType);
                 }
             }
         };

@@ -26,6 +26,7 @@ export default function MeetingViewer() {
     const [time, setTime] = useState<Date>(() => new Date());
 
     const [sharingUserId, setSharingUserId] = useState<string | null>(null);
+    const [screenShareMimeType, setScreenShareMimeType] = useState<string>('video/webm; codecs="vp8"'); // Default
     const screenShareInputRef = useRef<((data: Uint8Array) => void) | null>(null);
 
     const handleScreenData = useCallback((userId: string, data: Uint8Array) => {
@@ -44,6 +45,12 @@ export default function MeetingViewer() {
             screenShareInputRef.current(data);
         }
     }, [sharingUserId]);
+
+    const handleScreenShareStart = useCallback((userId: string, mimeType: string) => {
+        console.log(`[Page] Screen Share Started by ${userId} with Mime: ${mimeType}`);
+        setSharingUserId(userId);
+        setScreenShareMimeType(mimeType);
+    }, []);
 
     useEffect(() => {
         const timer = setInterval(() => setTime(new Date()), 1000);
@@ -81,7 +88,7 @@ export default function MeetingViewer() {
                 {sharingUserId && (
                     <div className="flex-1 bg-neutral-950 flex flex-col relative border-r border-white/10 p-4">
                         <div className="flex-1 relative rounded-2xl overflow-hidden border border-white/5 bg-black shadow-2xl">
-                            <ScreenSharePlayer inputRef={screenShareInputRef} />
+                            <ScreenSharePlayer inputRef={screenShareInputRef} mimeType={screenShareMimeType} />
 
                             <div className="absolute top-4 left-4 bg-red-500/90 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 backdrop-blur-md shadow-lg">
                                 <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
@@ -158,6 +165,7 @@ export default function MeetingViewer() {
                 roomId={mid as string}
                 onUserListChange={setParticipants}
                 onScreenData={handleScreenData}
+                onScreenShareStart={handleScreenShareStart}
             />
         </main>
     );

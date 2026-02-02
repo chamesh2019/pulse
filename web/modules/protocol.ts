@@ -11,6 +11,7 @@ export type ParsedMessage =
     | { type: 'USER_LIST_UPDATE'; users: User[] }
     | { type: 'SCREEN_SHARE'; userId: string; buffer: Uint8Array }
     | { type: 'SCREEN_SHARE_STOP'; userId: string }
+    | { type: 'SCREEN_SHARE_START'; userId: string; mimeType: string }
     | { type: 'UNKNOWN'; userId: string };
 
 const encoder = new TextEncoder();
@@ -73,6 +74,20 @@ export function createScreenShareStopMessage(userId: string): Uint8Array {
     return buffer;
 }
 
+export function createScreenShareStartMessage(userId: string, mimeType: string): Uint8Array {
+    const userIdBytes = encoder.encode(userId);
+    const mimeBytes = encoder.encode(mimeType);
+
+    // Packet: [UserId (36)] + [StreamType (1)] + [MimeType]
+    const buffer = new Uint8Array(USER_ID_LENGTH + STREAM_TYPE_LENGTH + mimeBytes.length);
+
+    buffer.set(userIdBytes);
+    buffer.set(new Uint8Array([STREAM_TYPES.SCREEN_SHARE_START]), USER_ID_LENGTH);
+    buffer.set(mimeBytes, USER_ID_LENGTH + STREAM_TYPE_LENGTH);
+
+    return buffer;
+}
+
 export function parseMessage(data: ArrayBuffer): ParsedMessage {
     const bytes = new Uint8Array(data);
     const userIdBytes = bytes.slice(0, USER_ID_LENGTH);
@@ -90,6 +105,9 @@ export function parseMessage(data: ArrayBuffer): ParsedMessage {
         return { type: 'SCREEN_SHARE', userId, buffer: payload };
     } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
         return { type: 'SCREEN_SHARE_STOP', userId };
+    } else if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
+        const mimeType = decoder.decode(payload);
+        return { type: 'SCREEN_SHARE_START', userId, mimeType };
     }
 
     return { type: 'UNKNOWN', userId };
