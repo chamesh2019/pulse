@@ -11,3 +11,10 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   @apply antialiased;
 }
+
+/* Enable smooth scroll only on desktop devices with fine pointer control */
+@media (hover: hover) and (pointer: fine) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
