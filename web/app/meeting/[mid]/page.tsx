@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { v4 as uuidv4 } from 'uuid';
 import { useMeetingSocket } from "@/hooks/useMeetingSocket";
 import { useAudioController } from "@/hooks/useAudioController";
-import { useScreenShare } from "@/hooks/useScreenShare";
+import { useScreenShare, VideoQuality } from "@/hooks/useScreenShare";
 import { User, createAudioMessage, createScreenShareMessage, createScreenShareStopMessage, createScreenShareStartMessage, createChatTextMessage, createChatImageMessage, ParsedMessage } from "@/modules/protocol";
 import Chat, { ChatMessage } from "@/components/Chat";
 import { USER_ID_LENGTH, STREAM_TYPE_LENGTH, STREAM_TYPES } from '@/components/constants';
@@ -44,6 +44,10 @@ export default function MeetingViewer() {
     const [sharingUserId, setSharingUserId] = useState<string | null>(null);
     const [screenShareMimeType, setScreenShareMimeType] = useState<string>('video/webm; codecs="vp8"'); // Default
     const screenShareInputRef = useRef<((data: Uint8Array) => void) | null>(null);
+
+    // New Video Quality State
+    const [videoQuality, setVideoQuality] = useState<VideoQuality>('balance');
+    const [customBitrate, setCustomBitrate] = useState<number>(3000000);
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [sidePanelMode, setSidePanelMode] = useState<SidePanelMode>('users');
@@ -134,7 +138,9 @@ export default function MeetingViewer() {
 
     const { isSharing, startScreenShare, stopScreenShare } = useScreenShare({
         userId: currentUserId,
-        onData: onScreenDataWrapper
+        onData: onScreenDataWrapper,
+        videoQuality: videoQuality,
+        customBitrate: customBitrate
     });
 
     const { sendMessage, isConnected } = useMeetingSocket({
@@ -370,6 +376,10 @@ export default function MeetingViewer() {
                 sidePanelMode={sidePanelMode}
                 onSetSidePanelMode={setSidePanelMode}
                 showSidePanelControls={!!sharingUserId}
+                videoQuality={videoQuality}
+                onSetVideoQuality={setVideoQuality}
+                customBitrate={customBitrate}
+                onSetCustomBitrate={setCustomBitrate}
             />
         </main>
     );
