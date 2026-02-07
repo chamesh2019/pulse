@@ -37,7 +37,7 @@ export function useScreenShare({ userId, onData }: UseScreenShareProps) {
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
                 },
-                audio: true
+                audio: false
             });
 
             streamRef.current = stream;
