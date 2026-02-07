@@ -71,21 +71,25 @@ export default function MeetingViewer() {
     // 2. Screen Data
     const onScreenDataWrapper = useCallback((data: Uint8Array) => {
         if (sendSocketMessageRef.current) {
-            // Check if it's a stop message
-            const isStop = data.byteLength === USER_ID_LENGTH + STREAM_TYPE_LENGTH;
-            // console.log(`[Page] Sending screen data. Size: ${data.byteLength}. IsStop: ${isStop}`);
-
             sendSocketMessageRef.current(data); // Send to server
 
-            // Loopback to local UI so the sharer sees what they are sharing
-            if (screenShareInputRef.current) {
-                screenShareInputRef.current(data);
-            }
+            // Parse locally to handle loopback correctly
+            const streamType = data[USER_ID_LENGTH];
+            const payload = data.slice(USER_ID_LENGTH + STREAM_TYPE_LENGTH);
 
-            // Also ensure local mode is updated if we start sharing
-            if (!isStop) {
+            if (streamType === STREAM_TYPES.SCREEN_SHARE_START) {
+                const textDecoder = new TextDecoder();
+                const mimeType = textDecoder.decode(payload);
+                console.log("[Page] Local Screen Share Started with Mime:", mimeType);
+                setScreenShareMimeType(mimeType);
+                setSharingUserId(currentUserId);
+            } else if (streamType === STREAM_TYPES.SCREEN_SHARE) {
+                if (screenShareInputRef.current) {
+                    screenShareInputRef.current(payload);
+                }
                 setSharingUserId(current => current === currentUserId ? current : currentUserId);
-            } else {
+            } else if (streamType === STREAM_TYPES.SCREEN_SHARE_STOP) {
+                console.log("[Page] Local Screen Share Stopped");
                 setSharingUserId(null);
             }
         }
