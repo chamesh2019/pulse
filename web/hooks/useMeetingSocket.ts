@@ -16,14 +16,16 @@ export function useMeetingSocket({
     roomId,
     userId,
     username,
+    hostKey,
     onUserListUpdate,
     onAudioData,
     onScreenData,
     onScreenShareStart,
     onChatData
-}: UseMeetingSocketProps) {
+}: UseMeetingSocketProps & { hostKey?: string | null }) {
     const socketRef = useRef<WebSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const [connectionError, setConnectionError] = useState<{ code: number, reason: string } | null>(null);
 
     // Use refs for callbacks to avoid re-connecting when they change
     const onUserListUpdateRef = useRef(onUserListUpdate);
@@ -31,6 +33,8 @@ export function useMeetingSocket({
     const onScreenDataRef = useRef(onScreenData);
     const onScreenShareStartRef = useRef(onScreenShareStart);
     const onChatDataRef = useRef(onChatData);
+
+    const hasConnectedRef = useRef(false);
 
     useEffect(() => {
         onUserListUpdateRef.current = onUserListUpdate;
@@ -47,8 +51,13 @@ export function useMeetingSocket({
             wsBase = wsBase.replace('http', 'ws');
         }
 
-        const wsUrl = `${wsBase}/room/${roomId}`;
+        let wsUrl = `${wsBase}/room/${roomId}`;
+        if (hostKey) {
+            wsUrl += `?key=${hostKey}`;
+        }
+
         console.log("Connecting to:", wsUrl);
+        hasConnectedRef.current = false;
 
         const socket = new WebSocket(wsUrl);
         socketRef.current = socket;
@@ -56,12 +65,22 @@ export function useMeetingSocket({
 
         socket.onopen = () => {
             setIsConnected(true);
+            setConnectionError(null);
+            hasConnectedRef.current = true;
             const joinMessage = createJoinMessage(userId, username);
             socket.send(joinMessage);
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event) => {
             setIsConnected(false);
+            console.log("Socket closed", event.code, event.reason);
+            if (event.code === 4004) {
+                setConnectionError({ code: 4004, reason: 'Room not found or not started.' });
+            } else if (event.code !== 1000 && hasConnectedRef.current) {
+                // Only show 'Connection Lost' if we were ever connected.
+                // If we never connected, it might be a network error or initial load glitch.
+                setConnectionError({ code: event.code, reason: 'Connection lost.' });
+            }
         };
 
         socket.onmessage = (event) => {
@@ -98,7 +117,7 @@ export function useMeetingSocket({
             socket.close();
             socketRef.current = null;
         };
-    }, [roomId, userId, username]); // Removed callbacks from dependencies
+    }, [roomId, userId, username, hostKey]); // Added hostKey dependency
 
     const sendMessage = useCallback((data: Uint8Array) => {
         if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -108,6 +127,7 @@ export function useMeetingSocket({
 
     return {
         isConnected,
+        connectionError,
         sendMessage
     };
 }

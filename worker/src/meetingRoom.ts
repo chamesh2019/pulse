@@ -14,6 +14,8 @@ export class MeetingRoom extends DurableObject {
         super(ctx, env);
     }
 
+    hostKey: string | null = null;
+
     async fetch(request: Request): Promise<Response> {
         if (request.method === "OPTIONS") {
             return new Response(null, {
@@ -28,6 +30,33 @@ export class MeetingRoom extends DurableObject {
         if (request.headers.get("Upgrade") !== "websocket") {
             return new Response("Method not allowed", { status: 405 });
         }
+
+        const url = new URL(request.url);
+        const key = url.searchParams.get("key");
+
+        // Room Existence / Creation Logic
+        if (this.sessions.size === 0) {
+            // Room is empty.
+            if (key) {
+                // Key provided -> Create Room (Host)
+                this.hostKey = key;
+                console.log("Room created by host with key");
+            } else {
+                // No key -> Reject (Room doesn't exist)
+                console.log("Rejecting guest join for empty room");
+                // We can accept the WebSocket but immediately close it with a specific code.
+                // Or we can return 404/403 HTTP response (but WebSocket clients might not handle non-101 well).
+                // Best practice for strict WebSocket is accept then close.
+                const { 0: client, 1: server } = new WebSocketPair();
+                server.accept();
+                server.close(4004, "Room not found");
+                return new Response(null, { status: 101, webSocket: client });
+            }
+        }
+
+        // If room exists (isActive), we allow connection. 
+        // We *could* validate key again if provided, to mark them as "Host" in the user list,
+        // but for now the requirement is just existence check.
 
         const { 0: client, 1: server } = new WebSocketPair();
 

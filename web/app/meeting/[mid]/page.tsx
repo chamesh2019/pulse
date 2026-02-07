@@ -26,6 +26,8 @@ const getImageBlobUrl = (data: Uint8Array) => {
 
 export default function MeetingViewer() {
     const { mid } = useParams();
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const hostKey = searchParams?.get('key');
 
     // --- State ---
     const [participants, setParticipants] = useState<User[]>([]);
@@ -66,7 +68,6 @@ export default function MeetingViewer() {
         }
     }, [currentUserId]);
 
-    // 2. Screen Data
     // 2. Screen Data
     const onScreenDataWrapper = useCallback((data: Uint8Array) => {
         if (sendSocketMessageRef.current) {
@@ -141,14 +142,13 @@ export default function MeetingViewer() {
     const { isSharing, startScreenShare, stopScreenShare } = useScreenShare({
         userId: currentUserId,
         onData: onScreenDataWrapper,
-        videoQuality: videoQuality,
-        customBitrate: customBitrate
     });
 
-    const { sendMessage, isConnected } = useMeetingSocket({
+    const { sendMessage, isConnected, connectionError } = useMeetingSocket({
         roomId: mid as string,
         userId: currentUserId,
         username,
+        hostKey: hostKey,
         onUserListUpdate: handleUserListUpdate,
         onAudioData: (_senderId, buffer) => feedAudio(buffer.buffer as ArrayBuffer),
         onScreenData: handleScreenDataIncoming,
@@ -211,7 +211,45 @@ export default function MeetingViewer() {
     // 2. Sharing: Main = Screen. Sidebar = (User List OR Chat) based on sidePanelMode.
 
     return (
-        <main className="h-screen bg-black text-white selection:bg-blue-500/30 flex flex-col overflow-hidden">
+        <main className="h-screen bg-black text-white selection:bg-blue-500/30 flex flex-col overflow-hidden relative">
+
+            {/* Connection Error Overlay */}
+            {connectionError && (
+                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+                    <div className="max-w-md w-full bg-neutral-900 border border-white/10 p-8 rounded-3xl shadow-2xl">
+                        <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2">
+                            {connectionError.code === 4004 ? "Meeting Not Found" : "Connection Lost"}
+                        </h2>
+                        <p className="text-neutral-400 mb-8">
+                            {connectionError.code === 4004
+                                ? "This meeting doesn't exist or hasn't been started yet. Please check the ID or ask the host to start the meeting."
+                                : "You have been disconnected from the meeting server."
+                            }
+                        </p>
+
+                        <div className="flex gap-4 justify-center">
+                            <button
+                                onClick={() => window.location.href = '/'}
+                                className="px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 transition text-sm font-semibold"
+                            >
+                                Go Home
+                            </button>
+                            {connectionError.code !== 4004 && (
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition text-sm font-semibold text-white shadow-lg shadow-blue-500/20"
+                                >
+                                    Reconnect
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="flex-none h-16 border-b border-white/10 flex justify-between items-center px-6 bg-neutral-900/30 backdrop-blur-md z-10">
                 <div className="flex items-center gap-4">
@@ -221,7 +259,7 @@ export default function MeetingViewer() {
                     <div>
                         <h1 className="font-bold text-lg tracking-tight">Pulse</h1>
                         <div className="flex items-center gap-2 text-xs text-neutral-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
                             <span>{participants.length} Online</span>
                             <span>•</span>
                             <span className="font-mono opacity-50">{mid}</span>
@@ -378,10 +416,6 @@ export default function MeetingViewer() {
                 sidePanelMode={sidePanelMode}
                 onSetSidePanelMode={setSidePanelMode}
                 showSidePanelControls={!!sharingUserId}
-                videoQuality={videoQuality}
-                onSetVideoQuality={setVideoQuality}
-                customBitrate={customBitrate}
-                onSetCustomBitrate={setCustomBitrate}
             />
         </main>
     );

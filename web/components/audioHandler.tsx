@@ -12,10 +12,6 @@ interface AudioHandlerProps {
     sidePanelMode: SidePanelMode;
     onSetSidePanelMode: (mode: SidePanelMode) => void;
     showSidePanelControls: boolean;
-    videoQuality: 'performance' | 'balance' | 'quality' | 'custom';
-    onSetVideoQuality: (quality: 'performance' | 'balance' | 'quality' | 'custom') => void;
-    customBitrate?: number;
-    onSetCustomBitrate?: (bitrate: number) => void;
 }
 
 export default function AudioHandler({
@@ -28,69 +24,12 @@ export default function AudioHandler({
     sidePanelMode,
     onSetSidePanelMode,
     showSidePanelControls,
-    videoQuality,
-    onSetVideoQuality,
-    customBitrate,
-    onSetCustomBitrate
 }: AudioHandlerProps) {
     const [showSettings, setShowSettings] = useState(false);
-    const [showQualityMenu, setShowQualityMenu] = useState(false);
-    const [showCustomBitrateModal, setShowCustomBitrateModal] = useState(false);
-    const [tempBitrate, setTempBitrate] = useState<string>('');
 
-    const handleCustomBitrateClick = () => {
-        setTempBitrate((customBitrate || 3000000).toString());
-        setShowCustomBitrateModal(true);
-        setShowSettings(false); // Close main menu
-    }
-
-    const applyCustomBitrate = () => {
-        const val = parseInt(tempBitrate, 10);
-        if (!isNaN(val) && val > 0 && onSetCustomBitrate) {
-            onSetCustomBitrate(val);
-            onSetVideoQuality('custom');
-        }
-        setShowCustomBitrateModal(false);
-    }
-
-    // Close menu when clicking outside (conceptually, but simple toggle for now)
 
     return (
         <>
-            {/* Custom Bitrate Modal */}
-            {showCustomBitrateModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center">
-                    <div className="bg-neutral-900 border border-white/10 rounded-2xl p-6 shadow-2xl w-80">
-                        <h3 className="text-lg font-bold text-white mb-4">Pro Bitrate</h3>
-                        <p className="text-xs text-neutral-400 mb-4">
-                            Enter target bitrate in bits per second (bps).<br />
-                            Example: 5000000 = 5 Mbps.
-                        </p>
-                        <input
-                            type="number"
-                            value={tempBitrate}
-                            onChange={(e) => setTempBitrate(e.target.value)}
-                            className="w-full bg-neutral-800 border-none rounded-lg px-4 py-2 text-white placeholder-neutral-500 focus:ring-2 focus:ring-blue-600 outline-none mb-6 font-mono"
-                            placeholder="3000000"
-                        />
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setShowCustomBitrateModal(false)}
-                                className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white py-2 rounded-lg font-medium transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={applyCustomBitrate}
-                                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-medium transition-colors"
-                            >
-                                Apply
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-2 rounded-full flex items-center gap-4 shadow-2xl z-50">
                 {/* Screen Share Button */}
                 <button
@@ -130,57 +69,17 @@ export default function AudioHandler({
                         </svg>
                     </button>
 
-                    {/* Settings Menu */}
-                    {showSettings && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-60 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-xl flex flex-col gap-1 overflow-visible z-50">
-                            {/* Video Quality Item (Hover Group) */}
-                            <div
-                                className="relative"
-                                onMouseEnter={() => setShowQualityMenu(true)}
-                                onMouseLeave={() => setShowQualityMenu(false)}
-                            >
-                                <button className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm text-neutral-300 hover:bg-white/5 transition-colors">
-                                    <div className="flex items-center gap-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                                        <span>Video Quality</span>
-                                    </div>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                                </button>
 
-                                {/* Nested Submenu */}
-                                {showQualityMenu && (
-                                    <div className="absolute left-full bottom-0 ml-2 w-48 bg-neutral-900 border border-white/10 rounded-xl p-2 shadow-2xl flex flex-col gap-1 z-50">
-                                        {(['performance', 'balance', 'quality'] as const).map((option) => (
-                                            <button
-                                                key={option}
-                                                onClick={() => {
-                                                    onSetVideoQuality(option);
-                                                    setShowSettings(false); // Close all
-                                                }}
-                                                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors ${videoQuality === option ? 'bg-blue-600/20 text-blue-400' : 'text-neutral-300 hover:bg-white/5'}`}
-                                            >
-                                                <span className="capitalize">{option}</span>
-                                                {videoQuality === option && (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                                )}
-                                            </button>
-                                        ))}
-                                        <div className="h-px bg-white/10 my-1"></div>
-                                        <button
-                                            onClick={handleCustomBitrateClick}
-                                            className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors ${videoQuality === 'custom' ? 'bg-purple-600/20 text-purple-400' : 'text-neutral-300 hover:bg-white/5'}`}
-                                        >
-                                            <span className="capitalize">Custom</span>
-                                            {videoQuality === 'custom' && (
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                            )}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
+
+                {/* Leave Meeting Button */}
+                <button
+                    onClick={() => window.location.href = '/'}
+                    className="group flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 bg-red-800 hover:bg-red-500 text-white"
+                    title="Leave Meeting"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                </button>
 
                 {/* Side Panel Toggles (Visible when sharing) */}
                 {showSidePanelControls && (

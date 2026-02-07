@@ -5,15 +5,22 @@ import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from 'uuid';
 import Head from 'next/head';
 
-// Utility to generate secure meeting ID
-async function generateMeetingId() {
+// Utility to generate secure meeting ID and Host Key
+async function generateMeetingDetails() {
   const timestamp = Date.now().toString(36);
   const randomBytes = new Uint8Array(8);
   crypto.getRandomValues(randomBytes);
   const hashBuffer = await crypto.subtle.digest('SHA-256', randomBytes);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return `${timestamp}-${hashHex.substring(0, 6)}`.toUpperCase();
+  const id = `${timestamp}-${hashHex.substring(0, 6)}`.toUpperCase();
+
+  // Generate Host Key
+  const keyBytes = new Uint8Array(16);
+  crypto.getRandomValues(keyBytes);
+  const keyHex = Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return { id, key: keyHex };
 }
 
 export default function Home() {
@@ -28,12 +35,16 @@ export default function Home() {
   // Host State
   const [hostUsername, setHostUsername] = useState("");
   const [generatedId, setGeneratedId] = useState("");
+  const [generatedKey, setGeneratedKey] = useState("");
   const [hostPassword, setHostPassword] = useState(""); // Optional future use
 
   // Init
   useEffect(() => {
     // Generate an ID immediately just in case they switch to Host
-    generateMeetingId().then(setGeneratedId);
+    generateMeetingDetails().then(({ id, key }) => {
+      setGeneratedId(id);
+      setGeneratedKey(key);
+    });
 
     if (typeof window !== 'undefined') {
       const storedName = localStorage.getItem('username');
@@ -65,7 +76,8 @@ export default function Home() {
 
     localStorage.setItem('username', hostUsername);
     console.log("Hosting", generatedId);
-    router.push(`/meeting/${generatedId}`);
+    // Navigate with Key
+    router.push(`/meeting/${generatedId}?key=${generatedKey}`);
   };
 
   return (
